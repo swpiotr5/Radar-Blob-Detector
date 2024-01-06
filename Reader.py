@@ -3,13 +3,32 @@ import os
 import numpy as np
 import random
 
-class Entity:
+class BlobDetector:
+    def __init__(self, input_dir='pictures'):
+        self.input_dir = input_dir
+        self.image_files = sorted(os.listdir(self.input_dir))
+        self.blobs = []
+
+    def detect_blobs(self):
+        for i, image_file in enumerate(self.image_files):
+            image_path = os.path.join(self.input_dir, image_file)
+            image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+
+            _, thresholded = cv2.threshold(image, 254, 255, cv2.THRESH_BINARY)
+            contours, _ = cv2.findContours(thresholded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            self.blobs.append(contours)
+
+    def get_blobs(self):
+        return self.blobs
+
+class BlobEntity:
     def __init__(self, initial_blob, color):
-        self.track = [cv2.minEnclosingCircle(initial_blob)[0]]  # Store the center of the blob
-        self.color = color  # Color for the entity
+        self.track = [cv2.minEnclosingCircle(initial_blob)[0]]
+        self.color = color
 
     def add_blob(self, blob):
-        self.track.append(cv2.minEnclosingCircle(blob)[0])  # Store the center of the blob
+        self.track.append(cv2.minEnclosingCircle(blob)[0])
 
     def get_track(self):
         return self.track
@@ -19,39 +38,48 @@ class Entity:
         last_known_position = self.track[-1]
         return ((blob_center[0] - last_known_position[0]) ** 2 + (blob_center[1] - last_known_position[1]) ** 2) ** 0.5
 
-
-class EntityTracker:
+class BlobEntityTracker:
     def __init__(self, blobs, colors):
-        self.entities = [Entity(blob, color) for blob, color in zip(blobs[0], colors)]
+        self.entities = [BlobEntity(blob, color) for blob, color in zip(blobs[0], colors)]
         self.blobs = blobs[1:]
-        self.SOME_THRESHOLD = 300  # Define the missing constant
+        self.SOME_THRESHOLD = 500
 
     def track_entities(self):
         for blobs in self.blobs:
+            # Create a list of entities that are not yet assigned to a blob
+            unassigned_entities = self.entities.copy()
+
+            blobs = list(blobs)
+            blobs.sort(key=lambda blob: min(entity.distance_to(blob) for entity in unassigned_entities))
+
             for blob in blobs:
-                closest_entity = min(self.entities, key=lambda entity: entity.distance_to(blob))
+                # If there are no unassigned entities left, create a new one
+                if not unassigned_entities:
+                    self.entities.append(BlobEntity(blob, random.choice(self.colors)))
+                    continue
 
-                # Check if the blob is close enough to the closest entity to be considered part of it
-                if closest_entity.distance_to(blob) < self.SOME_THRESHOLD:  # Use the defined constant
+                # Find the closest entity that is not yet assigned to a blob
+                closest_entity = min(unassigned_entities, key=lambda entity: entity.distance_to(blob))
+
+                if closest_entity.distance_to(blob) < self.SOME_THRESHOLD:
                     closest_entity.add_blob(blob)
+                    unassigned_entities.remove(closest_entity)
                 else:
-                    # If the blob is not close enough to any existing entity, create a new entity for it
-                    self.entities.append(Entity(blob, random.choice(self.colors)))  # Assign a random color to the new entity
+                    self.entities.append(BlobEntity(blob, random.choice(self.colors)))
 
-class Animation:
+class BlobAnimation:
     def __init__(self, tracker=None, input_dir='pictures', delay=1000):
         self.tracker = tracker
         self.input_dir = input_dir
         self.delay = delay
         self.image_files = sorted(os.listdir(self.input_dir))
         self.detector = BlobDetector(input_dir)
-        self.entity_colors = []  # Store entity colors
+        self.entity_colors = []
 
     def run(self):
         cv2.namedWindow('Animation', cv2.WINDOW_NORMAL)
         self.detector.detect_blobs()
 
-        # Pre-generate random colors for entities
         num_entities = sum(len(blobs) for blobs in self.detector.get_blobs())
         self.entity_colors = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for _ in range(num_entities)]
 
@@ -65,55 +93,27 @@ class Animation:
             frame = np.zeros_like(image)
             frame = cv2.add(frame, image)
 
-            # Draw circles around the detected blobs
             for contour in self.detector.get_blobs()[i]:
-                # Calculate the center and radius of the minimum enclosing circle
                 center, radius = cv2.minEnclosingCircle(contour)
-                center = tuple(map(int, center))  # Convert the center coordinates to integers
-                radius = int(radius)  # Convert the radius to an integer
+                center = tuple(map(int, center))
+                radius = int(radius)
 
-                # Track entities for the current frame
                 if self.tracker is not None:
-                    self.tracker = EntityTracker(self.detector.get_blobs()[:i+1], self.entity_colors)
+                    self.tracker = BlobEntityTracker(self.detector.get_blobs()[:i+1], self.entity_colors)
                     self.tracker.track_entities()
 
                     for entity in self.tracker.entities:
                         track = entity.get_track()
-                        entity_color = entity.color  # Get the entity's color
+                        entity_color = entity.color
                         for j in range(1, len(track)):
-                            # Draw a line from the previous position to the current position with the entity's color and reduced line thickness
                             cv2.line(frame, tuple(map(int, track[j-1])), tuple(map(int, track[j])), entity_color, 1)
                         
-                        # Draw the circle at the current position with the entity's color
                         cv2.circle(frame, tuple(map(int, track[-1])), radius, entity_color, 1)
 
             cv2.imshow('Animation', frame)
             cv2.waitKey(self.delay)
 
         cv2.destroyAllWindows()
-
-class BlobDetector:
-    def __init__(self, input_dir='pictures'):
-        self.input_dir = input_dir
-        self.image_files = sorted(os.listdir(self.input_dir))
-        self.blobs = []
-
-    def detect_blobs(self):
-        for i, image_file in enumerate(self.image_files):
-            image_path = os.path.join(self.input_dir, image_file)
-            image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-
-            # Threshold the image to get only white blobs
-            _, thresholded = cv2.threshold(image, 254, 255, cv2.THRESH_BINARY)
-
-            # Find contours in the thresholded image
-            contours, _ = cv2.findContours(thresholded, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            # Save the contours (blobs) for this image
-            self.blobs.append(contours)
-
-    def get_blobs(self):
-        return self.blobs
 
 class JPDA:
     def __init__(self, blobs):
@@ -128,13 +128,8 @@ class JPDA:
             probabilities_for_current_blobs = []
 
             for blob in current_blobs:
-                # Calculate the distance from this blob to all blobs in the previous frame
                 distances = [np.linalg.norm(np.mean(blob, axis=0) - np.mean(previous_blob, axis=0)) for previous_blob in previous_blobs]
-
-                # Convert distances to probabilities
                 probabilities = [1 / distance for distance in distances]
-
-                # Normalize probabilities so they sum to 1
                 total = sum(probabilities)
                 probabilities = [probability / total for probability in probabilities]
 
@@ -143,36 +138,27 @@ class JPDA:
             self.probabilities.append(probabilities_for_current_blobs)
 
     def get_tracks(self):
-        # For simplicity, we'll just assign each blob to the track with the highest probability
         for i in range(len(self.probabilities)):
             tracks_for_current_blobs = [np.argmax(probabilities) for probabilities in self.probabilities[i]]
             self.tracks.append(tracks_for_current_blobs)
 
         return self.tracks
 
-# Create an Animation instance
-animation = Animation()
+animation = BlobAnimation()
 
-# Detect blobs before getting them
 animation.detector.detect_blobs()
-
-# Get the detected blobs
 blobs = animation.detector.get_blobs()
 
-if blobs:  # Check if blobs is not empty
+if blobs:
     colors = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for _ in range(len(blobs))]
-    tracker = EntityTracker(blobs, colors)
+    tracker = BlobEntityTracker(blobs, colors)
     tracker.track_entities()
 
-    # Run the animation with tracker
-    animation = Animation(tracker)
+    animation = BlobAnimation(tracker)
     animation.run()
 
-    # Create a JPDA instance and calculate probabilities
     jpda = JPDA(blobs)
     jpda.calculate_probabilities()
-
-    # Get the tracks
     tracks = jpda.get_tracks()
 else:
     print("No blobs detected.")
