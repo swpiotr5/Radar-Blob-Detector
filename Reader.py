@@ -1,10 +1,12 @@
 import cv2
 import os
 import numpy as np
+import random
 
 class Entity:
-    def __init__(self, initial_blob):
+    def __init__(self, initial_blob, color):
         self.track = [cv2.minEnclosingCircle(initial_blob)[0]]  # Store the center of the blob
+        self.color = color  # Color for the entity
 
     def add_blob(self, blob):
         self.track.append(cv2.minEnclosingCircle(blob)[0])  # Store the center of the blob
@@ -19,8 +21,8 @@ class Entity:
 
 
 class EntityTracker:
-    def __init__(self, blobs):
-        self.entities = [Entity(blob) for blob in blobs[0]]
+    def __init__(self, blobs, colors):
+        self.entities = [Entity(blob, color) for blob, color in zip(blobs[0], colors)]
         self.blobs = blobs[1:]
         self.SOME_THRESHOLD = 300  # Define the missing constant
 
@@ -34,7 +36,7 @@ class EntityTracker:
                     closest_entity.add_blob(blob)
                 else:
                     # If the blob is not close enough to any existing entity, create a new entity for it
-                    self.entities.append(Entity(blob))
+                    self.entities.append(Entity(blob, random.choice(self.colors)))  # Assign a random color to the new entity
 
 class Animation:
     def __init__(self, tracker=None, input_dir='pictures', delay=1000):
@@ -43,10 +45,15 @@ class Animation:
         self.delay = delay
         self.image_files = sorted(os.listdir(self.input_dir))
         self.detector = BlobDetector(input_dir)
+        self.entity_colors = []  # Store entity colors
 
     def run(self):
         cv2.namedWindow('Animation', cv2.WINDOW_NORMAL)
         self.detector.detect_blobs()
+
+        # Pre-generate random colors for entities
+        num_entities = sum(len(blobs) for blobs in self.detector.get_blobs())
+        self.entity_colors = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for _ in range(num_entities)]
 
         for i, image_file in enumerate(self.image_files):
             if cv2.getWindowProperty('Animation', 0) < 0:
@@ -65,18 +72,20 @@ class Animation:
                 center = tuple(map(int, center))  # Convert the center coordinates to integers
                 radius = int(radius)  # Convert the radius to an integer
 
-                # Draw the circle on the frame
-                cv2.circle(frame, center, radius, (255, 0, 0), 2)
-            
-            # Track entities for the current frame
-            if self.tracker is not None:
-                self.tracker = EntityTracker(self.detector.get_blobs()[:i+1])
-                self.tracker.track_entities()
+                # Track entities for the current frame
+                if self.tracker is not None:
+                    self.tracker = EntityTracker(self.detector.get_blobs()[:i+1], self.entity_colors)
+                    self.tracker.track_entities()
 
-                for entity in self.tracker.entities:
-                    track = entity.get_track()
-                    for j in range(1, len(track)):
-                        cv2.line(frame, tuple(map(int, track[j-1])), tuple(map(int, track[j])), (0, 255, 0), 2)
+                    for entity in self.tracker.entities:
+                        track = entity.get_track()
+                        entity_color = entity.color  # Get the entity's color
+                        for j in range(1, len(track)):
+                            # Draw a line from the previous position to the current position with the entity's color and reduced line thickness
+                            cv2.line(frame, tuple(map(int, track[j-1])), tuple(map(int, track[j])), entity_color, 1)
+                        
+                        # Draw the circle at the current position with the entity's color
+                        cv2.circle(frame, tuple(map(int, track[-1])), radius, entity_color, 1)
 
             cv2.imshow('Animation', frame)
             cv2.waitKey(self.delay)
@@ -151,7 +160,8 @@ animation.detector.detect_blobs()
 blobs = animation.detector.get_blobs()
 
 if blobs:  # Check if blobs is not empty
-    tracker = EntityTracker(blobs)
+    colors = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for _ in range(len(blobs))]
+    tracker = EntityTracker(blobs, colors)
     tracker.track_entities()
 
     # Run the animation with tracker

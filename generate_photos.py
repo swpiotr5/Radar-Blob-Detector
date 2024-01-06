@@ -1,17 +1,19 @@
-import cv2
 import datetime
 import numpy as np
 import random
 import os
+import cv2
 
 # Define the size of the board
 BOARD_SIZE = 800
+IMAGE_HEIGHT = 600
+IMAGE_WIDTH = 800
 
-# Define initial attributes for 10 objects
-objects = [{'shape': random.choice(['circle', 'rectangle', 'ellipse']),
-            'position': (random.randint(0, BOARD_SIZE), random.randint(0, BOARD_SIZE)),
-            'size': random.randint(10, 50),
-            'color': (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))} for _ in range(10)]
+# Define initial attributes for a larger number of objects
+objects = [{'shape': 'circle',  # Only generate circles
+            'position': (random.randint(0, IMAGE_WIDTH), random.randint(0, IMAGE_HEIGHT)),
+            'size': random.randint(5, 10),  # Smaller size
+            'color': (255, 255, 255)} for _ in range(10)]  # More objects
 
 # Define the maximum shift per iteration
 max_shift = 40  # Increase the maximum shift
@@ -25,7 +27,7 @@ os.makedirs(output_dir, exist_ok=True)
 # Start the loop
 for i in range(30):
     # Create a blank image of size 800x600
-    image = np.zeros((600, 400, 3), dtype=np.uint8)  # 3 channels for color
+    image = np.zeros((IMAGE_HEIGHT, IMAGE_WIDTH, 3), dtype=np.uint8)  # 3 channels for color
 
     # Draw an object at each position
     for obj in objects:
@@ -33,10 +35,6 @@ for i in range(30):
         color = (255, 255, 255)  # White color
         if obj['shape'] == 'circle':
             cv2.circle(image, (x, y), obj['size'], color, -1)
-        elif obj['shape'] == 'rectangle':
-            cv2.rectangle(image, (x, y), (x + obj['size'], y + obj['size']), color, -1)
-        elif obj['shape'] == 'ellipse':
-            cv2.ellipse(image, (x, y), (obj['size'], obj['size']), 0, 0, 360, color, -1)
 
         # Shift the position randomly
         dx = random.randint(-max_shift, max_shift)
