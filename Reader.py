@@ -2,6 +2,8 @@ import cv2
 import os
 import numpy as np
 import random
+import numpy as np
+from scipy.stats import norm
 
 class BlobDetector:
     def __init__(self, input_dir='pictures'):
@@ -129,7 +131,18 @@ class JPDA:
 
             for blob in current_blobs:
                 distances = [np.linalg.norm(np.mean(blob, axis=0) - np.mean(previous_blob, axis=0)) for previous_blob in previous_blobs]
-                probabilities = [1 / distance for distance in distances]
+                # Obliczanie średniej i odchylenia standardowego odległości
+                mean_distance = np.mean(distances)
+                std_distance = np.std(distances)
+
+                # Obliczanie prawdopodobieństwa na podstawie rozkładu normalnego
+                probabilities = [norm.pdf(distance, loc=mean_distance, scale=std_distance) for distance in distances]
+                
+                # Użycie zasady 3 sigm: bloby w odległości większej niż 3 sigma od średniej są odrzucane
+                threshold = mean_distance + 3 * std_distance
+                probabilities = [prob if dist < threshold else 0.0 for dist, prob in zip(distances, probabilities)]
+
+                # Normalizacja prawdopodobieństw
                 total = sum(probabilities)
                 probabilities = [probability / total for probability in probabilities]
 
