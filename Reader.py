@@ -44,6 +44,7 @@ class BlobEntityTracker:
     def __init__(self, blobs, colors):
         self.entities = [BlobEntity(blob, color) for blob, color in zip(blobs[0], colors)]
         self.blobs = blobs[1:]
+        self.colors = colors
         self.SOME_THRESHOLD = 500
 
     def track_entities(self):
@@ -68,6 +69,10 @@ class BlobEntityTracker:
                     unassigned_entities.remove(closest_entity)
                 else:
                     self.entities.append(BlobEntity(blob, random.choice(self.colors)))
+
+            # Remove entities that were not assigned to any blob
+            for entity in unassigned_entities:
+                self.entities.remove(entity)
 
 class BlobAnimation:
     def __init__(self, tracker=None, input_dir='pictures', delay=1000):
