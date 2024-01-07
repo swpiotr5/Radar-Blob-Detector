@@ -65,7 +65,7 @@ class BlobEntityTracker:
         self.entities = [BlobEntityFactory.create_blob_entity(blob, color) for blob, color in zip(blobs[0], colors)]
         self.blobs = blobs[1:]
         self.colors = colors
-        self.SOME_THRESHOLD = 500
+        self.SOME_THRESHOLD = 100
 
     def track_entities(self):
         for blobs in self.blobs:
@@ -94,20 +94,19 @@ class BlobEntityTracker:
         return BlobEntityIterator(self.entities)
 
 class BlobAnimation:
-    def __init__(self, tracker=None, input_dir='pictures', delay=1000):
+    def __init__(self, tracker=None, input_dir='pictures', delay=10, color=None):  
         self.tracker = tracker
         self.input_dir = input_dir
         self.delay = delay
         self.image_files = sorted(os.listdir(self.input_dir))
         self.detector = BlobDetector(input_dir)
-        self.entity_colors = []
+        self.entity_color = color if color else (255, 255, 255)  # Użyj przekazanego koloru lub białego
 
     def run(self):
         cv2.namedWindow('Animation', cv2.WINDOW_NORMAL)
         self.detector.detect_blobs()
 
-        num_entities = sum(len(blobs) for blobs in self.detector.get_blobs())
-        self.entity_colors = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for _ in range(num_entities)]
+        self.entity_color = self.entity_color
 
         for i, image_file in enumerate(self.image_files):
             if cv2.getWindowProperty('Animation', 0) < 0:
@@ -125,7 +124,7 @@ class BlobAnimation:
                 radius = int(radius)
 
                 if self.tracker is not None:
-                    self.tracker = BlobEntityTracker(self.detector.get_blobs()[:i+1], self.entity_colors)
+                    self.tracker = BlobEntityTracker(self.detector.get_blobs()[:i+1], self.entity_color)
                     self.tracker.track_entities()
 
                     entities_iterator = self.tracker.get_entities_iterator()
@@ -171,23 +170,34 @@ class JPDA:
         self.probabilities = []
         self.tracks = []
 
-    def calculate_probabilities(self):
+    def calculate_distances(self, blob, previous_blobs):
+        return [np.linalg.norm(np.mean(blob, axis=0) - np.mean(previous_blob, axis=0)) for previous_blob in previous_blobs]
+
+    def calculate_probabilities(self, distances, mean_distance, std_distance):
+        return [norm.pdf(distance, loc=mean_distance, scale=std_distance) for distance in distances]
+
+    def apply_three_sigma_rule(self, distances, probabilities, mean_distance, std_distance):
+        threshold = mean_distance + 3 * std_distance
+        return [prob if dist < threshold else 0.0 for dist, prob in zip(distances, probabilities)]
+
+    def normalize_probabilities(self, probabilities):
+        total = sum(probabilities)
+        return [probability / total for probability in probabilities]
+
+    def calculate_probabilities_main(self):
         for i in range(1, len(self.blobs)):
             current_blobs = self.blobs[i]
             previous_blobs = self.blobs[i - 1]
             probabilities_for_current_blobs = []
 
             for blob in current_blobs:
-                distances = [np.linalg.norm(np.mean(blob, axis=0) - np.mean(previous_blob, axis=0)) for previous_blob in previous_blobs]
+                distances = self.calculate_distances(blob, previous_blobs)
                 mean_distance = np.mean(distances)
                 std_distance = np.std(distances)
 
-                probabilities = [norm.pdf(distance, loc=mean_distance, scale=std_distance) for distance in distances]
-                threshold = mean_distance + 3 * std_distance
-                probabilities = [prob if dist < threshold else 0.0 for dist, prob in zip(distances, probabilities)]
-
-                total = sum(probabilities)
-                probabilities = [probability / total for probability in probabilities]
+                probabilities = self.calculate_probabilities(distances, mean_distance, std_distance)
+                probabilities = self.apply_three_sigma_rule(distances, probabilities, mean_distance, std_distance)
+                probabilities = self.normalize_probabilities(probabilities)
 
                 probabilities_for_current_blobs.append(probabilities)
 
@@ -220,15 +230,18 @@ def main():
     blobs = animation.detector.get_blobs()
 
     if blobs:
-        colors = [(random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)) for _ in range(len(blobs))]
+        # Generuj kolory tylko raz
+        colors = [(0,255,0)]
+
         tracker = BlobEntityTracker(blobs, colors)
         tracker.track_entities()
 
-        animation = BlobAnimation(tracker)
+        # Przekazuj te same kolory za każdym razem, gdy tworzysz nowy obiekt BlobAnimation
+        animation = BlobAnimation(tracker, color=colors)
         animation.run()
 
         jpda = JPDA(blobs)
-        jpda.calculate_probabilities()
+        jpda.calculate_probabilities_main()
         tracks = jpda.get_tracks()
     else:
         print("No blobs detected.")
