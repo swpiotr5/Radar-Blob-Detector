@@ -12,8 +12,12 @@ IMAGE_WIDTH = 800
 # Define initial attributes for a larger number of objects
 objects = [{'shape': 'circle',  # Only generate circles
             'position': (random.randint(0, IMAGE_WIDTH), random.randint(0, IMAGE_HEIGHT)),
-            'size': random.randint(5, 10),  # Smaller size
-            'color': (255, 255, 255)} for _ in range(10)]  # More objects
+            'size': random.randint(2, 5),  # Smaller size
+            'color': (255, 255, 255),  # White color
+            'direction': (random.uniform(-1, 1), random.uniform(-1, 1))} for _ in range(20)]  # More objects
+
+# ...
+
 
 # Define the maximum shift per iteration
 max_shift = 40  # Increase the maximum shift
@@ -34,12 +38,12 @@ for i in range(30):
         x, y = obj['position']
         color = (255, 255, 255)  # White color
         if obj['shape'] == 'circle':
-            cv2.circle(image, (x, y), obj['size'], color, -1)
+            cv2.circle(image, (round(x), round(y)), obj['size'], color, -1)
 
-        # Shift the position randomly
-        dx = random.randint(-max_shift, max_shift)
-        dy = random.randint(-max_shift, max_shift)
-        obj['position'] = (x + dx, y + dy)
+        # Shift the position in the direction of the object
+        dx, dy = obj['direction']
+        obj['position'] = (x + dx * max_shift, y + dy * max_shift)
+
 
     # Generate a filename based on the current time, incremented by i minutes
     filename = (datetime.datetime.now() + datetime.timedelta(minutes=i)).strftime('%Y%m%d%H%M') + '.png'

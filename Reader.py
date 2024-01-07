@@ -93,8 +93,15 @@ class BlobEntityTracker:
     def get_entities_iterator(self):
         return BlobEntityIterator(self.entities)
 
+    def draw_tracks(self, frame):
+            for entity in self.get_entities_iterator():
+                track = entity.get_track()
+                entity_color = entity.color
+                track_points = np.array(track, dtype=np.int32).reshape((-1, 1, 2))
+                cv2.polylines(frame, [track_points], isClosed=False, color=entity_color, thickness=1, lineType=cv2.LINE_AA)
+
 class BlobAnimation:
-    def __init__(self, tracker=None, input_dir='pictures', delay=10, color=None):  
+    def __init__(self, tracker=None, input_dir='pictures', delay=100, color=None):  
         self.tracker = tracker
         self.input_dir = input_dir
         self.delay = delay
@@ -118,24 +125,10 @@ class BlobAnimation:
             frame = np.zeros_like(image)
             frame = cv2.add(frame, image)
 
-            for contour in self.detector.get_blobs()[i]:
-                center, radius = cv2.minEnclosingCircle(contour)
-                center = tuple(map(int, center))
-                radius = int(radius)
-
-                if self.tracker is not None:
-                    self.tracker = BlobEntityTracker(self.detector.get_blobs()[:i+1], self.entity_color)
-                    self.tracker.track_entities()
-
-                    entities_iterator = self.tracker.get_entities_iterator()
-
-                    for entity in entities_iterator:
-                        track = entity.get_track()
-                        entity_color = entity.color
-                        for j in range(1, len(track)):
-                            cv2.line(frame, tuple(map(int, track[j-1])), tuple(map(int, track[j])), entity_color, 1)
-                        
-                        cv2.circle(frame, tuple(map(int, track[-1])), radius, entity_color, 1)
+            if self.tracker is not None:
+                self.tracker = BlobEntityTracker(self.detector.get_blobs()[:i+1], self.entity_color)
+                self.tracker.track_entities()
+                self.tracker.draw_tracks(frame)
 
             cv2.imshow('Animation', frame)
             cv2.waitKey(self.delay)
